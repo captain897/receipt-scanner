@@ -151,12 +151,12 @@
                 <div class="upload-title">Upload Receipt</div>
                 <div class="upload-subtitle">Take a photo or choose from files</div>
                 <div class="upload-buttons">
-                    <button class="btn-upload btn-camera" id="takePhotoBtn">📷 Take Photo</button>
+                    <button class="btn-upload btn-camera" id="takePhotoBtn">📷 Scan Receipt</button>
                     <button class="btn-upload btn-files" id="chooseFilesBtn">📁 Choose File</button>
                 </div>
                 <div class="upload-formats">Accepts: JPG, PNG, PDF, GIF</div>
             </div>
-            <input type="file" id="fileInput" accept="image/*,.pdf">
+            <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.gif,.pdf,.heic">
         </div>
         
         <!-- Camera Section -->
@@ -434,11 +434,49 @@
         }
         
         // File handling
+        const MAX_FILE_SIZE = 4.999 * 1024 * 1024; // 4.999MB in bytes
+        
         function handleFile(file) {
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = e => { capturedImageData = e.target.result; previewImage.src = capturedImageData; showSection('preview'); };
-            reader.readAsDataURL(file);
+            
+            // Check file size
+            if (file.size > MAX_FILE_SIZE) {
+                alert('File too large. Maximum size is 5MB.\n\nYour file: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
+                return;
+            }
+            
+            // If it's an image, resize/compress it like scanner does
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const img = new Image();
+                    img.onload = () => {
+                        // Resize to max 1200px and compress
+                        const maxSize = 1200;
+                        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        enhance(canvas);
+                        capturedImageData = canvas.toDataURL('image/jpeg', 0.85);
+                        previewImage.src = capturedImageData;
+                        showSection('preview');
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // For PDFs and other files, just pass through (size already checked)
+                const reader = new FileReader();
+                reader.onload = e => { 
+                    capturedImageData = e.target.result; 
+                    previewImage.src = capturedImageData; 
+                    showSection('preview'); 
+                };
+                reader.readAsDataURL(file);
+            }
         }
         
         // Events

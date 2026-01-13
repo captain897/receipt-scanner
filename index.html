@@ -5,8 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Receipt Scanner Widget</title>
     
-    <!-- JotForm Widget API -->
-    <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
+    <!-- JotForm Widget API (loaded conditionally) -->
+    <script>
+        // Check if we're in an iframe (likely JotForm)
+        var inJotForm = window.self !== window.top;
+    </script>
+    <script src="https://cdn.jotfor.ms/js/vendor/JFCustomWidget.min.js" onerror="window.jfLoadError=true"></script>
     
     <style>
         * {
@@ -15,37 +19,47 @@
             padding: 0;
         }
         
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            min-height: 100vh;
-        }
-        
-        .container {
-            max-width: 100%;
-            padding: 10px;
-        }
-        
-        .scanner-wrapper {
-            position: relative;
-            width: 100%;
-            background: #000;
-            border-radius: 12px;
+        html, body {
+            height: 100%;
             overflow: hidden;
         }
         
-        #videoContainer {
-            position: relative;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: white;
+        }
+        
+        .container {
             width: 100%;
-            aspect-ratio: 3/4;
-            background: #1a1a1a;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Camera View */
+        #cameraSection {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        #cameraSection.hidden {
+            display: none;
+        }
+        
+        .video-wrapper {
+            flex: 1;
+            position: relative;
+            background: #000;
+            overflow: hidden;
         }
         
         #video {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            display: block;
         }
         
         #overlayCanvas {
@@ -57,26 +71,42 @@
             pointer-events: none;
         }
         
+        /* Status Bar */
         .status-bar {
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 8px 12px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+            padding: 10px;
+            z-index: 10;
+        }
+        
+        .status-text {
             font-size: 13px;
+            text-align: center;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: center;
+            gap: 6px;
         }
         
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: #ff4444;
-            animation: pulse 1.5s infinite;
+            background: #888;
+            transition: background 0.3s;
+        }
+        
+        .status-dot.searching {
+            background: #ffa500;
+            animation: pulse 1s infinite;
         }
         
         .status-dot.detected {
-            background: #44ff44;
+            background: #00ff00;
+            box-shadow: 0 0 8px #00ff00;
         }
         
         @keyframes pulse {
@@ -84,112 +114,128 @@
             50% { opacity: 0.5; }
         }
         
+        /* Controls */
         .controls {
-            padding: 15px;
-            background: #1a1a1a;
+            background: #1a1a2e;
+            padding: 12px;
             display: flex;
             justify-content: center;
+            align-items: center;
             gap: 15px;
         }
         
         .btn {
-            padding: 14px 28px;
             border: none;
-            border-radius: 25px;
-            font-size: 16px;
-            font-weight: 600;
+            border-radius: 50%;
             cursor: pointer;
-            transition: all 0.2s;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: center;
+            transition: all 0.2s;
         }
         
         .btn-capture {
-            background: #4CAF50;
-            color: white;
+            width: 60px;
+            height: 60px;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.3);
         }
         
-        .btn-capture:hover {
-            background: #45a049;
+        .btn-capture:active {
+            transform: scale(0.95);
         }
         
-        .btn-capture:disabled {
-            background: #666;
-            cursor: not-allowed;
+        .btn-capture-inner {
+            width: 50px;
+            height: 50px;
+            background: white;
+            border-radius: 50%;
+            border: 3px solid #1a1a2e;
+        }
+        
+        .btn-capture.detected .btn-capture-inner {
+            background: #00ff00;
+            border-color: #00aa00;
+        }
+        
+        .btn-small {
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.2);
+            font-size: 16px;
+        }
+        
+        /* Preview Section */
+        #previewSection {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        #previewSection.active {
+            display: flex;
+        }
+        
+        .preview-header {
+            background: #00cc66;
+            padding: 10px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .preview-image-container {
+            flex: 1;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            min-height: 0;
+        }
+        
+        #previewCanvas {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 6px;
+            box-shadow: 0 2px 15px rgba(0,255,100,0.3);
+        }
+        
+        .preview-controls {
+            background: #1a1a2e;
+            padding: 12px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .btn-action {
+            padding: 12px 24px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
         }
         
         .btn-retake {
-            background: #ff9800;
+            background: rgba(255,255,255,0.2);
             color: white;
         }
         
         .btn-use {
-            background: #2196F3;
+            background: #00cc66;
             color: white;
         }
         
-        .btn-switch {
-            background: #333;
-            color: white;
-            padding: 10px 15px;
-        }
-        
-        /* Preview Mode */
-        #previewSection {
-            display: none;
-        }
-        
-        #previewSection.active {
-            display: block;
-        }
-        
-        #cameraSection.hidden {
-            display: none;
-        }
-        
-        .preview-container {
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .preview-header {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .preview-header .checkmark {
-            color: #4CAF50;
-        }
-        
-        #previewCanvas {
-            width: 100%;
-            border-radius: 8px;
-            border: 2px solid #e0e0e0;
-        }
-        
-        .preview-controls {
-            margin-top: 15px;
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-        }
-        
-        /* Loading State */
+        /* Loading Overlay */
         .loading-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(255,255,255,0.95);
+            background: #1a1a2e;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -202,10 +248,10 @@
         }
         
         .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #e0e0e0;
-            border-top-color: #2196F3;
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #00cc66;
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -217,204 +263,320 @@
         .loading-text {
             margin-top: 15px;
             font-size: 14px;
-            color: #666;
         }
         
         .loading-subtext {
-            font-size: 12px;
-            color: #999;
-            margin-top: 5px;
+            margin-top: 6px;
+            font-size: 11px;
+            opacity: 0.6;
         }
         
-        /* Success State */
-        .success-message {
-            display: none;
-            background: #e8f5e9;
-            border: 1px solid #4CAF50;
-            border-radius: 8px;
-            padding: 15px;
+        /* Capture flash */
+        .capture-flash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 999;
+            transition: opacity 0.1s;
+        }
+        
+        .capture-flash.active {
+            opacity: 0.8;
+        }
+        
+        /* Progress bar */
+        .capture-progress {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 150px;
+            height: 5px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .capture-progress-bar {
+            height: 100%;
+            background: #00ff00;
+            width: 0%;
+            transition: width 0.15s;
+        }
+        
+        /* Hint text */
+        .hint {
+            position: absolute;
+            bottom: 8px;
+            left: 0;
+            right: 0;
             text-align: center;
-            color: #2e7d32;
+            font-size: 11px;
+            opacity: 0.7;
         }
         
-        .success-message.active {
-            display: block;
-        }
-        
-        /* Error State */
-        .error-message {
-            display: none;
-            background: #ffebee;
-            border: 1px solid #f44336;
-            border-radius: 8px;
-            padding: 15px;
-            text-align: center;
-            color: #c62828;
-        }
-        
-        .error-message.active {
-            display: block;
-        }
-        
-        /* Tips */
-        .tips {
-            background: #fff3e0;
-            border-radius: 8px;
-            padding: 12px;
-            margin-top: 10px;
-            font-size: 12px;
-            color: #e65100;
-        }
-        
-        .tips-title {
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-        
-        /* Hidden canvas for processing */
+        /* Hidden */
         .hidden-canvas {
             display: none;
+        }
+        
+        /* Saved indicator */
+        #savedSection {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            background: #1a1a2e;
+            padding: 20px;
+        }
+        
+        #savedSection.active {
+            display: flex;
+        }
+        
+        .saved-icon {
+            font-size: 60px;
+            margin-bottom: 15px;
+        }
+        
+        .saved-text {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .saved-subtext {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-bottom: 20px;
+        }
+        
+        #savedThumbnail {
+            max-width: 120px;
+            max-height: 160px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        
+        .btn-scan-another {
+            padding: 12px 24px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            background: rgba(255,255,255,0.2);
+            color: white;
         }
     </style>
 </head>
 <body>
-    <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner"></div>
-        <div class="loading-text">Loading Scanner...</div>
-        <div class="loading-subtext">Initializing camera and detection engine</div>
+        <div class="loading-text">Loading Scanner</div>
+        <div class="loading-subtext">Initializing camera...</div>
     </div>
     
+    <div class="capture-flash" id="captureFlash"></div>
+
     <div class="container">
         <!-- Camera Section -->
         <div id="cameraSection">
-            <div class="scanner-wrapper">
+            <div class="video-wrapper">
+                <video id="video" autoplay playsinline muted></video>
+                <canvas id="overlayCanvas"></canvas>
+                
                 <div class="status-bar">
-                    <div class="status-dot" id="statusDot"></div>
-                    <span id="statusText">Position receipt in frame</span>
+                    <div class="status-text">
+                        <div class="status-dot" id="statusDot"></div>
+                        <span id="statusText">Initializing...</span>
+                    </div>
                 </div>
                 
-                <div id="videoContainer">
-                    <video id="video" autoplay playsinline muted></video>
-                    <canvas id="overlayCanvas"></canvas>
+                <div class="capture-progress" id="captureProgress" style="display:none;">
+                    <div class="capture-progress-bar" id="captureProgressBar"></div>
                 </div>
                 
-                <div class="controls">
-                    <button class="btn btn-switch" id="switchCameraBtn" title="Switch Camera">
-                        🔄
-                    </button>
-                    <button class="btn btn-capture" id="captureBtn" disabled>
-                        📷 Capture
-                    </button>
-                </div>
+                <div class="hint" id="hintText">Point camera at receipt</div>
             </div>
             
-            <div class="tips">
-                <div class="tips-title">📋 Tips for best results:</div>
-                <ul style="margin-left: 15px; margin-top: 5px;">
-                    <li>Place receipt on a contrasting surface</li>
-                    <li>Ensure good lighting</li>
-                    <li>Wait for green border before capturing</li>
-                </ul>
+            <div class="controls">
+                <button class="btn btn-small" id="switchCameraBtn">🔄</button>
+                <button class="btn btn-capture" id="captureBtn">
+                    <div class="btn-capture-inner"></div>
+                </button>
+                <button class="btn btn-small" id="autoToggleBtn" title="Auto-capture ON">🅰️</button>
             </div>
         </div>
         
         <!-- Preview Section -->
         <div id="previewSection">
-            <div class="preview-container">
-                <div class="preview-header">
-                    <span class="checkmark">✓</span>
-                    Scanned Receipt
-                </div>
+            <div class="preview-header">
+                ✓ Receipt Captured
+            </div>
+            <div class="preview-image-container">
                 <canvas id="previewCanvas"></canvas>
-                
-                <div class="preview-controls">
-                    <button class="btn btn-retake" id="retakeBtn">
-                        🔄 Retake
-                    </button>
-                    <button class="btn btn-use" id="useImageBtn">
-                        ✓ Use This
-                    </button>
-                </div>
+            </div>
+            <div class="preview-controls">
+                <button class="btn-action btn-retake" id="retakeBtn">Retake</button>
+                <button class="btn-action btn-use" id="useImageBtn">Use Photo</button>
             </div>
         </div>
         
-        <!-- Success Message -->
-        <div class="success-message" id="successMessage">
-            ✓ Receipt captured successfully!
-        </div>
-        
-        <!-- Error Message -->
-        <div class="error-message" id="errorMessage">
-            Unable to access camera. Please check permissions.
+        <!-- Saved Confirmation -->
+        <div id="savedSection">
+            <div class="saved-icon">✅</div>
+            <div class="saved-text">Receipt Saved</div>
+            <div class="saved-subtext">Image attached to form</div>
+            <img id="savedThumbnail" src="" alt="Captured receipt">
+            <button class="btn-scan-another" id="scanAnotherBtn">Scan Another</button>
         </div>
     </div>
     
-    <!-- Hidden canvas for capture -->
     <canvas id="captureCanvas" class="hidden-canvas"></canvas>
     
-    <!-- OpenCV.js - Required for jscanify -->
-    <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCVReady()"></script>
-    
-    <!-- jscanify - Document Scanner -->
-    <script src="https://cdn.jsdelivr.net/gh/ColonelParrot/jscanify@master/src/jscanify.min.js"></script>
+    <!-- OpenCV.js -->
+    <script>
+        var Module = {
+            onRuntimeInitialized: function() {
+                console.log('OpenCV ready');
+                window.opencvReady = true;
+            }
+        };
+    </script>
+    <script async src="https://docs.opencv.org/4.7.0/opencv.js"></script>
     
     <script>
-        // Global state
-        let scanner = null;
-        let video = null;
-        let stream = null;
-        let overlayCanvas = null;
-        let overlayCtx = null;
-        let captureCanvas = null;
-        let captureCtx = null;
-        let previewCanvas = null;
-        let previewCtx = null;
-        let detectionInterval = null;
-        let isDocumentDetected = false;
-        let lastDetectedCorners = null;
-        let currentFacingMode = 'environment'; // Start with back camera
-        let opencvReady = false;
+        // ============================================
+        // JOTFORM WIDGET INTEGRATION
+        // ============================================
+        
+        let widgetReady = false;
         let capturedImageData = null;
+        let standaloneMode = false;
         
-        // DOM Elements
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        const cameraSection = document.getElementById('cameraSection');
-        const previewSection = document.getElementById('previewSection');
-        const statusDot = document.getElementById('statusDot');
-        const statusText = document.getElementById('statusText');
-        const captureBtn = document.getElementById('captureBtn');
-        const switchCameraBtn = document.getElementById('switchCameraBtn');
-        const retakeBtn = document.getElementById('retakeBtn');
-        const useImageBtn = document.getElementById('useImageBtn');
-        const successMessage = document.getElementById('successMessage');
-        const errorMessage = document.getElementById('errorMessage');
-        
-        // OpenCV Ready callback
-        function onOpenCVReady() {
-            console.log('OpenCV.js loaded');
-            opencvReady = true;
-            initializeScanner();
-        }
-        
-        // Also check if cv is already loaded (in case script loads before our callback is set)
-        function checkOpenCV() {
-            if (typeof cv !== 'undefined' && cv.Mat) {
-                opencvReady = true;
-                initializeScanner();
+        // Check if JotForm API is available and we're in an iframe
+        function initJotFormWidget() {
+            if (typeof JFCustomWidget !== 'undefined' && window.inJotForm) {
+                try {
+                    // Subscribe to JotForm ready event
+                    JFCustomWidget.subscribe("ready", function(data) {
+                        console.log("JotForm widget ready", data);
+                        widgetReady = true;
+                        
+                        // Set initial frame height
+                        JFCustomWidget.requestFrameResize({
+                            width: 400,
+                            height: 500
+                        });
+                        
+                        // Initialize scanner once OpenCV is ready
+                        waitForOpenCV();
+                    });
+                    
+                    // Handle form submission
+                    JFCustomWidget.subscribe("submit", function() {
+                        console.log("Form submit triggered");
+                        if (capturedImageData) {
+                            JFCustomWidget.sendSubmit({
+                                valid: true,
+                                value: capturedImageData
+                            });
+                        } else {
+                            JFCustomWidget.sendSubmit({
+                                valid: true,
+                                value: ""
+                            });
+                        }
+                    });
+                    
+                    console.log("JotForm widget subscriptions set up");
+                } catch (e) {
+                    console.log("JotForm init error, falling back to standalone:", e);
+                    initStandalone();
+                }
             } else {
-                setTimeout(checkOpenCV, 100);
+                initStandalone();
             }
         }
         
-        // Initialize scanner when OpenCV is ready
-        function initializeScanner() {
-            if (!opencvReady) return;
-            
-            console.log('Initializing scanner...');
-            scanner = new jscanify();
-            
-            // Initialize canvases
+        function initStandalone() {
+            console.log("Running in standalone mode");
+            standaloneMode = true;
+            widgetReady = true; // Mark as ready so useImage works
+            waitForOpenCV();
+        }
+        
+        function waitForOpenCV() {
+            if (typeof cv !== 'undefined' && cv.Mat) {
+                window.opencvReady = true;
+                initScanner();
+            } else {
+                setTimeout(waitForOpenCV, 100);
+            }
+        }
+        
+        // Send data to JotForm
+        function sendToJotForm(imageData) {
+            if (!standaloneMode && typeof JFCustomWidget !== 'undefined') {
+                try {
+                    JFCustomWidget.sendData({
+                        value: imageData
+                    });
+                    console.log("Image data sent to JotForm");
+                } catch (e) {
+                    console.log("Could not send to JotForm:", e);
+                }
+            } else {
+                console.log("Standalone mode - image captured, size:", Math.round(imageData.length / 1024), "KB");
+            }
+        }
+        
+        // Start initialization after DOM and scripts load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Give JotForm script a moment to initialize
+            setTimeout(initJotFormWidget, 100);
+        });
+        
+        // ============================================
+        // SCANNER LOGIC
+        // ============================================
+        
+        let video, stream;
+        let overlayCanvas, overlayCtx;
+        let captureCanvas, captureCtx;
+        let previewCanvas, previewCtx;
+        let detectionLoop = null;
+        let detectedCorners = null;
+        let currentFacingMode = 'environment';
+        let consecutiveDetections = 0;
+        let autoCapture = true;
+        
+        const AUTO_CAPTURE_THRESHOLD = 8;
+        
+        // DOM
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const cameraSection = document.getElementById('cameraSection');
+        const previewSection = document.getElementById('previewSection');
+        const savedSection = document.getElementById('savedSection');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const captureBtn = document.getElementById('captureBtn');
+        const captureProgress = document.getElementById('captureProgress');
+        const captureProgressBar = document.getElementById('captureProgressBar');
+        const hintText = document.getElementById('hintText');
+        const captureFlash = document.getElementById('captureFlash');
+        const autoToggleBtn = document.getElementById('autoToggleBtn');
+        const savedThumbnail = document.getElementById('savedThumbnail');
+        
+        function initScanner() {
             video = document.getElementById('video');
             overlayCanvas = document.getElementById('overlayCanvas');
             overlayCtx = overlayCanvas.getContext('2d');
@@ -423,262 +585,453 @@
             previewCanvas = document.getElementById('previewCanvas');
             previewCtx = previewCanvas.getContext('2d');
             
-            // Start camera
             startCamera();
         }
         
-        // Start camera with specified facing mode
         async function startCamera() {
             try {
-                // Stop any existing stream
                 if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
+                    stream.getTracks().forEach(t => t.stop());
                 }
                 
-                const constraints = {
+                stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: currentFacingMode,
-                        width: { ideal: 1280 },
-                        height: { ideal: 1920 }
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     }
-                };
+                });
                 
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 
                 video.onloadedmetadata = () => {
                     video.play();
-                    
-                    // Set canvas sizes to match video
                     overlayCanvas.width = video.videoWidth;
                     overlayCanvas.height = video.videoHeight;
                     captureCanvas.width = video.videoWidth;
                     captureCanvas.height = video.videoHeight;
                     
-                    // Hide loading, show camera
                     loadingOverlay.classList.add('hidden');
-                    
-                    // Start edge detection loop
                     startDetection();
-                    
-                    console.log('Camera started:', video.videoWidth, 'x', video.videoHeight);
                 };
-                
             } catch (err) {
                 console.error('Camera error:', err);
-                loadingOverlay.classList.add('hidden');
-                errorMessage.classList.add('active');
-                errorMessage.textContent = 'Camera access denied. Please allow camera access and refresh.';
+                loadingOverlay.querySelector('.loading-text').textContent = 'Camera Error';
+                loadingOverlay.querySelector('.loading-subtext').textContent = 'Please allow camera access';
             }
         }
         
-        // Switch between front and back camera
-        function switchCamera() {
-            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            stopDetection();
-            startCamera();
-        }
-        
-        // Start document detection loop
-        function startDetection() {
-            if (detectionInterval) clearInterval(detectionInterval);
-            
-            detectionInterval = setInterval(() => {
-                if (!video || video.paused || video.ended) return;
-                
-                try {
-                    // Draw current frame to capture canvas
-                    captureCtx.drawImage(video, 0, 0);
-                    
-                    // Clear overlay
-                    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-                    
-                    // Try to find document corners
-                    const corners = scanner.findPaperContour(captureCanvas);
-                    
-                    if (corners && corners.length === 4) {
-                        // Document detected - draw green outline
-                        isDocumentDetected = true;
-                        lastDetectedCorners = corners;
-                        
-                        // Scale corners to overlay canvas size
-                        const scaleX = overlayCanvas.width / captureCanvas.width;
-                        const scaleY = overlayCanvas.height / captureCanvas.height;
-                        
-                        // Draw detection polygon
-                        overlayCtx.beginPath();
-                        overlayCtx.moveTo(corners[0].x * scaleX, corners[0].y * scaleY);
-                        for (let i = 1; i < corners.length; i++) {
-                            overlayCtx.lineTo(corners[i].x * scaleX, corners[i].y * scaleY);
-                        }
-                        overlayCtx.closePath();
-                        
-                        // Green fill with transparency
-                        overlayCtx.fillStyle = 'rgba(76, 175, 80, 0.2)';
-                        overlayCtx.fill();
-                        
-                        // Green stroke
-                        overlayCtx.strokeStyle = '#4CAF50';
-                        overlayCtx.lineWidth = 3;
-                        overlayCtx.stroke();
-                        
-                        // Draw corner circles
-                        overlayCtx.fillStyle = '#4CAF50';
-                        corners.forEach(corner => {
-                            overlayCtx.beginPath();
-                            overlayCtx.arc(corner.x * scaleX, corner.y * scaleY, 8, 0, Math.PI * 2);
-                            overlayCtx.fill();
-                        });
-                        
-                        // Update status
-                        statusDot.classList.add('detected');
-                        statusText.textContent = 'Receipt detected - Ready to capture!';
-                        captureBtn.disabled = false;
-                        
-                    } else {
-                        // No document detected
-                        isDocumentDetected = false;
-                        lastDetectedCorners = null;
-                        
-                        statusDot.classList.remove('detected');
-                        statusText.textContent = 'Position receipt in frame';
-                        captureBtn.disabled = true;
-                    }
-                    
-                } catch (err) {
-                    // Silently handle detection errors
-                    console.debug('Detection frame error:', err);
-                }
-                
-            }, 100); // Run at ~10fps
-        }
-        
-        // Stop detection loop
-        function stopDetection() {
-            if (detectionInterval) {
-                clearInterval(detectionInterval);
-                detectionInterval = null;
-            }
-        }
-        
-        // Capture and process image
-        function captureImage() {
-            if (!isDocumentDetected || !lastDetectedCorners) {
-                alert('Please position the receipt so it\'s detected (green border)');
-                return;
-            }
+        // Detection methods
+        function detectDocument(canvas) {
+            const src = cv.imread(canvas);
+            let bestContour = null;
+            let bestScore = 0;
             
             try {
-                // Draw current frame to capture canvas
-                captureCtx.drawImage(video, 0, 0);
+                const methods = [
+                    () => detectWithCanny(src, 30, 100),
+                    () => detectWithCanny(src, 50, 150),
+                    () => detectWithCanny(src, 75, 200),
+                    () => detectWithAdaptiveThreshold(src),
+                    () => detectWithOtsu(src)
+                ];
                 
-                // Extract and correct perspective using jscanify
-                const extractedCanvas = scanner.extractPaper(captureCanvas, 800, 1200);
+                for (const method of methods) {
+                    try {
+                        const corners = method();
+                        if (corners) {
+                            const score = scoreContour(corners, canvas.width, canvas.height);
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestContour = corners;
+                            }
+                        }
+                    } catch (e) {}
+                }
+            } finally {
+                src.delete();
+            }
+            
+            return bestContour;
+        }
+        
+        function detectWithCanny(src, thresh1, thresh2) {
+            const gray = new cv.Mat();
+            const blur = new cv.Mat();
+            const edges = new cv.Mat();
+            const contours = new cv.MatVector();
+            const hierarchy = new cv.Mat();
+            
+            try {
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+                cv.Canny(blur, edges, thresh1, thresh2);
                 
-                // Set preview canvas size
-                previewCanvas.width = extractedCanvas.width;
-                previewCanvas.height = extractedCanvas.height;
+                const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+                cv.dilate(edges, edges, kernel);
+                kernel.delete();
                 
-                // Draw to preview
-                previewCtx.drawImage(extractedCanvas, 0, 0);
-                
-                // Store the captured image data
-                capturedImageData = previewCanvas.toDataURL('image/jpeg', 0.85);
-                
-                // Stop detection and switch to preview mode
-                stopDetection();
-                cameraSection.classList.add('hidden');
-                previewSection.classList.add('active');
-                
-                console.log('Image captured, size:', capturedImageData.length);
-                
-            } catch (err) {
-                console.error('Capture error:', err);
-                alert('Error capturing image. Please try again.');
+                cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                return findLargestQuad(contours, src.cols, src.rows);
+            } finally {
+                gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
             }
         }
         
-        // Retake photo
-        function retakePhoto() {
+        function detectWithAdaptiveThreshold(src) {
+            const gray = new cv.Mat();
+            const blur = new cv.Mat();
+            const thresh = new cv.Mat();
+            const contours = new cv.MatVector();
+            const hierarchy = new cv.Mat();
+            
+            try {
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+                cv.adaptiveThreshold(blur, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2);
+                cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                return findLargestQuad(contours, src.cols, src.rows);
+            } finally {
+                gray.delete(); blur.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+            }
+        }
+        
+        function detectWithOtsu(src) {
+            const gray = new cv.Mat();
+            const blur = new cv.Mat();
+            const thresh = new cv.Mat();
+            const contours = new cv.MatVector();
+            const hierarchy = new cv.Mat();
+            
+            try {
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+                cv.threshold(blur, thresh, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+                cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                return findLargestQuad(contours, src.cols, src.rows);
+            } finally {
+                gray.delete(); blur.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+            }
+        }
+        
+        function findLargestQuad(contours, width, height) {
+            let maxArea = 0;
+            let bestCorners = null;
+            const minArea = (width * height) * 0.05;
+            const maxAreaLimit = (width * height) * 0.95;
+            
+            for (let i = 0; i < contours.size(); i++) {
+                const contour = contours.get(i);
+                const area = cv.contourArea(contour);
+                
+                if (area < minArea || area > maxAreaLimit) continue;
+                
+                const peri = cv.arcLength(contour, true);
+                const approx = new cv.Mat();
+                cv.approxPolyDP(contour, approx, 0.02 * peri, true);
+                
+                if (approx.rows === 4 && area > maxArea) {
+                    if (isValidQuad(approx, width, height)) {
+                        maxArea = area;
+                        bestCorners = [];
+                        for (let j = 0; j < 4; j++) {
+                            bestCorners.push({
+                                x: approx.data32S[j * 2],
+                                y: approx.data32S[j * 2 + 1]
+                            });
+                        }
+                    }
+                }
+                approx.delete();
+            }
+            
+            return bestCorners ? orderCorners(bestCorners) : null;
+        }
+        
+        function isValidQuad(approx, width, height) {
+            const corners = [];
+            for (let i = 0; i < 4; i++) {
+                corners.push({ x: approx.data32S[i * 2], y: approx.data32S[i * 2 + 1] });
+            }
+            
+            const margin = 5;
+            for (const c of corners) {
+                if (c.x < margin || c.x > width - margin || c.y < margin || c.y > height - margin) {
+                    return false;
+                }
+            }
+            
+            const ordered = orderCorners(corners);
+            for (let i = 0; i < 4; i++) {
+                const angle = getAngle(ordered[i], ordered[(i + 1) % 4], ordered[(i + 2) % 4]);
+                if (angle < 45 || angle > 135) return false;
+            }
+            
+            return true;
+        }
+        
+        function getAngle(p1, p2, p3) {
+            const v1 = { x: p1.x - p2.x, y: p1.y - p2.y };
+            const v2 = { x: p3.x - p2.x, y: p3.y - p2.y };
+            const dot = v1.x * v2.x + v1.y * v2.y;
+            const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+            const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+            return Math.acos(dot / (mag1 * mag2)) * (180 / Math.PI);
+        }
+        
+        function orderCorners(corners) {
+            const sorted = [...corners].sort((a, b) => a.y - b.y);
+            const top = sorted.slice(0, 2).sort((a, b) => a.x - b.x);
+            const bottom = sorted.slice(2, 4).sort((a, b) => a.x - b.x);
+            return [top[0], top[1], bottom[1], bottom[0]];
+        }
+        
+        function scoreContour(corners, width, height) {
+            if (!corners || corners.length !== 4) return 0;
+            const area = polygonArea(corners);
+            const areaRatio = area / (width * height);
+            return (areaRatio >= 0.05 && areaRatio <= 0.95) ? areaRatio * 100 : 0;
+        }
+        
+        function polygonArea(corners) {
+            let area = 0;
+            for (let i = 0; i < corners.length; i++) {
+                const j = (i + 1) % corners.length;
+                area += corners[i].x * corners[j].y - corners[j].x * corners[i].y;
+            }
+            return Math.abs(area / 2);
+        }
+        
+        // Detection loop
+        function startDetection() {
+            statusDot.classList.add('searching');
+            statusText.textContent = 'Looking for receipt...';
+            hintText.textContent = 'Point camera at receipt';
+            
+            detectionLoop = setInterval(() => {
+                if (!video || video.paused) return;
+                
+                captureCtx.drawImage(video, 0, 0);
+                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                
+                const corners = detectDocument(captureCanvas);
+                
+                if (corners && corners.length === 4) {
+                    detectedCorners = corners;
+                    consecutiveDetections++;
+                    
+                    drawDetectionOverlay(corners);
+                    
+                    statusDot.classList.remove('searching');
+                    statusDot.classList.add('detected');
+                    captureBtn.classList.add('detected');
+                    
+                    if (autoCapture) {
+                        captureProgress.style.display = 'block';
+                        const progress = Math.min((consecutiveDetections / AUTO_CAPTURE_THRESHOLD) * 100, 100);
+                        captureProgressBar.style.width = progress + '%';
+                        
+                        if (consecutiveDetections < AUTO_CAPTURE_THRESHOLD) {
+                            statusText.textContent = 'Hold steady...';
+                            hintText.textContent = 'Keep still';
+                        } else {
+                            statusText.textContent = 'Capturing!';
+                            triggerCapture();
+                            return;
+                        }
+                    } else {
+                        statusText.textContent = 'Tap to capture';
+                        captureProgress.style.display = 'none';
+                    }
+                } else {
+                    consecutiveDetections = 0;
+                    detectedCorners = null;
+                    statusDot.classList.remove('detected');
+                    statusDot.classList.add('searching');
+                    statusText.textContent = 'Looking for receipt...';
+                    hintText.textContent = 'Point camera at receipt';
+                    captureBtn.classList.remove('detected');
+                    captureProgress.style.display = 'none';
+                    captureProgressBar.style.width = '0%';
+                }
+            }, 150);
+        }
+        
+        function drawDetectionOverlay(corners) {
+            const scaleX = overlayCanvas.width / captureCanvas.width;
+            const scaleY = overlayCanvas.height / captureCanvas.height;
+            
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(corners[0].x * scaleX, corners[0].y * scaleY);
+            for (let i = 1; i < 4; i++) {
+                overlayCtx.lineTo(corners[i].x * scaleX, corners[i].y * scaleY);
+            }
+            overlayCtx.closePath();
+            
+            overlayCtx.fillStyle = 'rgba(0, 255, 100, 0.2)';
+            overlayCtx.fill();
+            overlayCtx.strokeStyle = '#00ff66';
+            overlayCtx.lineWidth = 4;
+            overlayCtx.stroke();
+            
+            overlayCtx.fillStyle = '#00ff66';
+            corners.forEach(corner => {
+                overlayCtx.beginPath();
+                overlayCtx.arc(corner.x * scaleX, corner.y * scaleY, 8, 0, Math.PI * 2);
+                overlayCtx.fill();
+            });
+        }
+        
+        function stopDetection() {
+            if (detectionLoop) {
+                clearInterval(detectionLoop);
+                detectionLoop = null;
+            }
+        }
+        
+        function triggerCapture() {
+            stopDetection();
+            
+            captureFlash.classList.add('active');
+            setTimeout(() => captureFlash.classList.remove('active'), 150);
+            
+            captureCtx.drawImage(video, 0, 0);
+            processCapture();
+        }
+        
+        function processCapture() {
+            let outputCanvas;
+            
+            if (detectedCorners && detectedCorners.length === 4) {
+                outputCanvas = applyPerspectiveCorrection(captureCanvas, detectedCorners);
+            } else {
+                outputCanvas = document.createElement('canvas');
+                outputCanvas.width = captureCanvas.width;
+                outputCanvas.height = captureCanvas.height;
+                outputCanvas.getContext('2d').drawImage(captureCanvas, 0, 0);
+            }
+            
+            const maxSize = 1200;
+            const scale = Math.min(maxSize / outputCanvas.width, maxSize / outputCanvas.height, 1);
+            
+            previewCanvas.width = Math.round(outputCanvas.width * scale);
+            previewCanvas.height = Math.round(outputCanvas.height * scale);
+            previewCtx.drawImage(outputCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+            
+            enhanceImage(previewCanvas);
+            
+            capturedImageData = previewCanvas.toDataURL('image/jpeg', 0.85);
+            
+            cameraSection.classList.add('hidden');
+            previewSection.classList.add('active');
+        }
+        
+        function applyPerspectiveCorrection(canvas, corners) {
+            const src = cv.imread(canvas);
+            
+            const widthTop = distance(corners[0], corners[1]);
+            const widthBottom = distance(corners[3], corners[2]);
+            const width = Math.round(Math.max(widthTop, widthBottom));
+            
+            const heightLeft = distance(corners[0], corners[3]);
+            const heightRight = distance(corners[1], corners[2]);
+            const height = Math.round(Math.max(heightLeft, heightRight));
+            
+            const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                corners[0].x, corners[0].y, corners[1].x, corners[1].y,
+                corners[2].x, corners[2].y, corners[3].x, corners[3].y
+            ]);
+            
+            const dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                0, 0, width, 0, width, height, 0, height
+            ]);
+            
+            const M = cv.getPerspectiveTransform(srcPts, dstPts);
+            const dst = new cv.Mat();
+            cv.warpPerspective(src, dst, M, new cv.Size(width, height));
+            
+            const outputCanvas = document.createElement('canvas');
+            outputCanvas.width = width;
+            outputCanvas.height = height;
+            cv.imshow(outputCanvas, dst);
+            
+            src.delete(); srcPts.delete(); dstPts.delete(); M.delete(); dst.delete();
+            
+            return outputCanvas;
+        }
+        
+        function distance(p1, p2) {
+            return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+        }
+        
+        function enhanceImage(canvas) {
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            const factor = 1.15;
+            const intercept = 128 * (1 - factor);
+            
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.min(255, Math.max(0, data[i] * factor + intercept));
+                data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor + intercept));
+                data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor + intercept));
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+        }
+        
+        // UI Actions
+        function retake() {
             capturedImageData = null;
+            consecutiveDetections = 0;
+            detectedCorners = null;
             previewSection.classList.remove('active');
+            savedSection.classList.remove('active');
             cameraSection.classList.remove('hidden');
-            successMessage.classList.remove('active');
             startDetection();
         }
         
-        // Use the captured image
         function useImage() {
-            if (!capturedImageData) {
-                alert('No image captured');
-                return;
-            }
-            
-            // Show success message
-            previewSection.classList.remove('active');
-            successMessage.classList.add('active');
-            
             // Send to JotForm
             sendToJotForm(capturedImageData);
+            
+            // Show confirmation
+            savedThumbnail.src = capturedImageData;
+            previewSection.classList.remove('active');
+            savedSection.classList.add('active');
         }
         
-        // Send image data to JotForm
-        function sendToJotForm(imageData) {
-            // Send the data immediately (JotForm will collect it on submit)
-            JFCustomWidget.sendData({
-                value: imageData
-            });
-            
-            console.log('Image data sent to JotForm');
+        function switchCamera() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            stopDetection();
+            consecutiveDetections = 0;
+            startCamera();
         }
         
-        // Event Listeners
-        captureBtn.addEventListener('click', captureImage);
-        switchCameraBtn.addEventListener('click', switchCamera);
-        retakeBtn.addEventListener('click', retakePhoto);
-        useImageBtn.addEventListener('click', useImage);
+        function toggleAutoCapture() {
+            autoCapture = !autoCapture;
+            autoToggleBtn.textContent = autoCapture ? '🅰️' : '📷';
+            autoToggleBtn.title = autoCapture ? 'Auto-capture ON' : 'Manual mode';
+            if (!autoCapture) captureProgress.style.display = 'none';
+        }
         
-        // JotForm Widget Integration
-        JFCustomWidget.subscribe("ready", function(data) {
-            console.log('JotForm widget ready', data);
-            
-            // If there's a previous value (editing submission), load it
-            if (data.value) {
-                capturedImageData = data.value;
-                
-                // Display the existing image
-                const img = new Image();
-                img.onload = function() {
-                    previewCanvas.width = img.width;
-                    previewCanvas.height = img.height;
-                    previewCtx.drawImage(img, 0, 0);
-                    
-                    loadingOverlay.classList.add('hidden');
-                    cameraSection.classList.add('hidden');
-                    previewSection.classList.add('active');
-                };
-                img.src = capturedImageData;
+        // Event listeners
+        captureBtn.addEventListener('click', () => {
+            if (detectedCorners) {
+                triggerCapture();
+            } else {
+                stopDetection();
+                captureCtx.drawImage(video, 0, 0);
+                processCapture();
             }
         });
         
-        JFCustomWidget.subscribe("submit", function() {
-            console.log('JotForm submit event');
-            
-            // Send the captured image data
-            JFCustomWidget.sendSubmit({
-                valid: !!capturedImageData,
-                value: capturedImageData || ''
-            });
-        });
-        
-        // Request appropriate frame size
-        JFCustomWidget.requestFrameResize({
-            width: 400,
-            height: 600
-        });
-        
-        // Start checking for OpenCV
-        checkOpenCV();
+        document.getElementById('retakeBtn').addEventListener('click', retake);
+        document.getElementById('useImageBtn').addEventListener('click', useImage);
+        document.getElementById('switchCameraBtn').addEventListener('click', switchCamera);
+        document.getElementById('scanAnotherBtn').addEventListener('click', retake);
+        autoToggleBtn.addEventListener('click', toggleAutoCapture);
     </script>
 </body>
 </html>

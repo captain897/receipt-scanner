@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Receipt Scanner Widget</title>
+    
+    <!-- JotForm Widget API -->
+    <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 100%;
+            padding: 10px;
+        }
+        
+        .scanner-wrapper {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        #videoContainer {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 3/4;
+            background: #1a1a1a;
+        }
+        
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .status-bar {
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 12px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .status-dot.detected {
+            background: #44ff44;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .controls {
+            padding: 15px;
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-capture {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-capture:hover {
+            background: #45a049;
+        }
+        
+        .btn-capture:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        .btn-retake {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .btn-use {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .btn-switch {
+            background: #333;
+            color: white;
+            padding: 10px 15px;
+        }
+        
+        /* Preview Mode */
+        #previewSection {
+            display: none;
+        }
+        
+        #previewSection.active {
+            display: block;
+        }
+        
+        #cameraSection.hidden {
+            display: none;
+        }
+        
+        .preview-container {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .preview-header {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .preview-header .checkmark {
+            color: #4CAF50;
+        }
+        
+        #previewCanvas {
+            width: 100%;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .preview-controls {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        /* Loading State */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .loading-overlay.hidden {
+            display: none;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e0e0e0;
+            border-top-color: #2196F3;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .loading-subtext {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+        
+        /* Success State */
+        .success-message {
+            display: none;
+            background: #e8f5e9;
+            border: 1px solid #4CAF50;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            color: #2e7d32;
+        }
+        
+        .success-message.active {
+            display: block;
+        }
+        
+        /* Error State */
+        .error-message {
+            display: none;
+            background: #ffebee;
+            border: 1px solid #f44336;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            color: #c62828;
+        }
+        
+        .error-message.active {
+            display: block;
+        }
+        
+        /* Tips */
+        .tips {
+            background: #fff3e0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #e65100;
+        }
+        
+        .tips-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        /* Hidden canvas for processing */
+        .hidden-canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading Scanner...</div>
+        <div class="loading-subtext">Initializing camera and detection engine</div>
+    </div>
+    
+    <div class="container">
+        <!-- Camera Section -->
+        <div id="cameraSection">
+            <div class="scanner-wrapper">
+                <div class="status-bar">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Position receipt in frame</span>
+                </div>
+                
+                <div id="videoContainer">
+                    <video id="video" autoplay playsinline muted></video>
+                    <canvas id="overlayCanvas"></canvas>
+                </div>
+                
+                <div class="controls">
+                    <button class="btn btn-switch" id="switchCameraBtn" title="Switch Camera">
+                        🔄
+                    </button>
+                    <button class="btn btn-capture" id="captureBtn" disabled>
+                        📷 Capture
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tips">
+                <div class="tips-title">📋 Tips for best results:</div>
+                <ul style="margin-left: 15px; margin-top: 5px;">
+                    <li>Place receipt on a contrasting surface</li>
+                    <li>Ensure good lighting</li>
+                    <li>Wait for green border before capturing</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Preview Section -->
+        <div id="previewSection">
+            <div class="preview-container">
+                <div class="preview-header">
+                    <span class="checkmark">✓</span>
+                    Scanned Receipt
+                </div>
+                <canvas id="previewCanvas"></canvas>
+                
+                <div class="preview-controls">
+                    <button class="btn btn-retake" id="retakeBtn">
+                        🔄 Retake
+                    </button>
+                    <button class="btn btn-use" id="useImageBtn">
+                        ✓ Use This
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Success Message -->
+        <div class="success-message" id="successMessage">
+            ✓ Receipt captured successfully!
+        </div>
+        
+        <!-- Error Message -->
+        <div class="error-message" id="errorMessage">
+            Unable to access camera. Please check permissions.
+        </div>
+    </div>
+    
+    <!-- Hidden canvas for capture -->
+    <canvas id="captureCanvas" class="hidden-canvas"></canvas>
+    
+    <!-- OpenCV.js - Required for jscanify -->
+    <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCVReady()"></script>
+    
+    <!-- jscanify - Document Scanner -->
+    <script src="https://cdn.jsdelivr.net/gh/ColonelParrot/jscanify@master/src/jscanify.min.js"></script>
+    
+    <script>
+        // Global state
+        let scanner = null;
+        let video = null;
+        let stream = null;
+        let overlayCanvas = null;
+        let overlayCtx = null;
+        let captureCanvas = null;
+        let captureCtx = null;
+        let previewCanvas = null;
+        let previewCtx = null;
+        let detectionInterval = null;
+        let isDocumentDetected = false;
+        let lastDetectedCorners = null;
+        let currentFacingMode = 'environment'; // Start with back camera
+        let opencvReady = false;
+        let capturedImageData = null;
+        
+        // DOM Elements
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const cameraSection = document.getElementById('cameraSection');
+        const previewSection = document.getElementById('previewSection');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const captureBtn = document.getElementById('captureBtn');
+        const switchCameraBtn = document.getElementById('switchCameraBtn');
+        const retakeBtn = document.getElementById('retakeBtn');
+        const useImageBtn = document.getElementById('useImageBtn');
+        const successMessage = document.getElementById('successMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        
+        // OpenCV Ready callback
+        function onOpenCVReady() {
+            console.log('OpenCV.js loaded');
+            opencvReady = true;
+            initializeScanner();
+        }
+        
+        // Also check if cv is already loaded (in case script loads before our callback is set)
+        function checkOpenCV() {
+            if (typeof cv !== 'undefined' && cv.Mat) {
+                opencvReady = true;
+                initializeScanner();
+            } else {
+                setTimeout(checkOpenCV, 100);
+            }
+        }
+        
+        // Initialize scanner when OpenCV is ready
+        function initializeScanner() {
+            if (!opencvReady) return;
+            
+            console.log('Initializing scanner...');
+            scanner = new jscanify();
+            
+            // Initialize canvases
+            video = document.getElementById('video');
+            overlayCanvas = document.getElementById('overlayCanvas');
+            overlayCtx = overlayCanvas.getContext('2d');
+            captureCanvas = document.getElementById('captureCanvas');
+            captureCtx = captureCanvas.getContext('2d');
+            previewCanvas = document.getElementById('previewCanvas');
+            previewCtx = previewCanvas.getContext('2d');
+            
+            // Start camera
+            startCamera();
+        }
+        
+        // Start camera with specified facing mode
+        async function startCamera() {
+            try {
+                // Stop any existing stream
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                
+                const constraints = {
+                    video: {
+                        facingMode: currentFacingMode,
+                        width: { ideal: 1280 },
+                        height: { ideal: 1920 }
+                    }
+                };
+                
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    
+                    // Set canvas sizes to match video
+                    overlayCanvas.width = video.videoWidth;
+                    overlayCanvas.height = video.videoHeight;
+                    captureCanvas.width = video.videoWidth;
+                    captureCanvas.height = video.videoHeight;
+                    
+                    // Hide loading, show camera
+                    loadingOverlay.classList.add('hidden');
+                    
+                    // Start edge detection loop
+                    startDetection();
+                    
+                    console.log('Camera started:', video.videoWidth, 'x', video.videoHeight);
+                };
+                
+            } catch (err) {
+                console.error('Camera error:', err);
+                loadingOverlay.classList.add('hidden');
+                errorMessage.classList.add('active');
+                errorMessage.textContent = 'Camera access denied. Please allow camera access and refresh.';
+            }
+        }
+        
+        // Switch between front and back camera
+        function switchCamera() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            stopDetection();
+            startCamera();
+        }
+        
+        // Start document detection loop
+        function startDetection() {
+            if (detectionInterval) clearInterval(detectionInterval);
+            
+            detectionInterval = setInterval(() => {
+                if (!video || video.paused || video.ended) return;
+                
+                try {
+                    // Draw current frame to capture canvas
+                    captureCtx.drawImage(video, 0, 0);
+                    
+                    // Clear overlay
+                    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                    
+                    // Try to find document corners
+                    const corners = scanner.findPaperContour(captureCanvas);
+                    
+                    if (corners && corners.length === 4) {
+                        // Document detected - draw green outline
+                        isDocumentDetected = true;
+                        lastDetectedCorners = corners;
+                        
+                        // Scale corners to overlay canvas size
+                        const scaleX = overlayCanvas.width / captureCanvas.width;
+                        const scaleY = overlayCanvas.height / captureCanvas.height;
+                        
+                        // Draw detection polygon
+                        overlayCtx.beginPath();
+                        overlayCtx.moveTo(corners[0].x * scaleX, corners[0].y * scaleY);
+                        for (let i = 1; i < corners.length; i++) {
+                            overlayCtx.lineTo(corners[i].x * scaleX, corners[i].y * scaleY);
+                        }
+                        overlayCtx.closePath();
+                        
+                        // Green fill with transparency
+                        overlayCtx.fillStyle = 'rgba(76, 175, 80, 0.2)';
+                        overlayCtx.fill();
+                        
+                        // Green stroke
+                        overlayCtx.strokeStyle = '#4CAF50';
+                        overlayCtx.lineWidth = 3;
+                        overlayCtx.stroke();
+                        
+                        // Draw corner circles
+                        overlayCtx.fillStyle = '#4CAF50';
+                        corners.forEach(corner => {
+                            overlayCtx.beginPath();
+                            overlayCtx.arc(corner.x * scaleX, corner.y * scaleY, 8, 0, Math.PI * 2);
+                            overlayCtx.fill();
+                        });
+                        
+                        // Update status
+                        statusDot.classList.add('detected');
+                        statusText.textContent = 'Receipt detected - Ready to capture!';
+                        captureBtn.disabled = false;
+                        
+                    } else {
+                        // No document detected
+                        isDocumentDetected = false;
+                        lastDetectedCorners = null;
+                        
+                        statusDot.classList.remove('detected');
+                        statusText.textContent = 'Position receipt in frame';
+                        captureBtn.disabled = true;
+                    }
+                    
+                } catch (err) {
+                    // Silently handle detection errors
+                    console.debug('Detection frame error:', err);
+                }
+                
+            }, 100); // Run at ~10fps
+        }
+        
+        // Stop detection loop
+        function stopDetection() {
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
+        }
+        
+        // Capture and process image
+        function captureImage() {
+            if (!isDocumentDetected || !lastDetectedCorners) {
+                alert('Please position the receipt so it\'s detected (green border)');
+                return;
+            }
+            
+            try {
+                // Draw current frame to capture canvas
+                captureCtx.drawImage(video, 0, 0);
+                
+                // Extract and correct perspective using jscanify
+                const extractedCanvas = scanner.extractPaper(captureCanvas, 800, 1200);
+                
+                // Set preview canvas size
+                previewCanvas.width = extractedCanvas.width;
+                previewCanvas.height = extractedCanvas.height;
+                
+                // Draw to preview
+                previewCtx.drawImage(extractedCanvas, 0, 0);
+                
+                // Store the captured image data
+                capturedImageData = previewCanvas.toDataURL('image/jpeg', 0.85);
+                
+                // Stop detection and switch to preview mode
+                stopDetection();
+                cameraSection.classList.add('hidden');
+                previewSection.classList.add('active');
+                
+                console.log('Image captured, size:', capturedImageData.length);
+                
+            } catch (err) {
+                console.error('Capture error:', err);
+                alert('Error capturing image. Please try again.');
+            }
+        }
+        
+        // Retake photo
+        function retakePhoto() {
+            capturedImageData = null;
+            previewSection.classList.remove('active');
+            cameraSection.classList.remove('hidden');
+            successMessage.classList.remove('active');
+            startDetection();
+        }
+        
+        // Use the captured image
+        function useImage() {
+            if (!capturedImageData) {
+                alert('No image captured');
+                return;
+            }
+            
+            // Show success message
+            previewSection.classList.remove('active');
+            successMessage.classList.add('active');
+            
+            // Send to JotForm
+            sendToJotForm(capturedImageData);
+        }
+        
+        // Send image data to JotForm
+        function sendToJotForm(imageData) {
+            // Send the data immediately (JotForm will collect it on submit)
+            JFCustomWidget.sendData({
+                value: imageData
+            });
+            
+            console.log('Image data sent to JotForm');
+        }
+        
+        // Event Listeners
+        captureBtn.addEventListener('click', captureImage);
+        switchCameraBtn.addEventListener('click', switchCamera);
+        retakeBtn.addEventListener('click', retakePhoto);
+        useImageBtn.addEventListener('click', useImage);
+        
+        // JotForm Widget Integration
+        JFCustomWidget.subscribe("ready", function(data) {
+            console.log('JotForm widget ready', data);
+            
+            // If there's a previous value (editing submission), load it
+            if (data.value) {
+                capturedImageData = data.value;
+                
+                // Display the existing image
+                const img = new Image();
+                img.onload = function() {
+                    previewCanvas.width = img.width;
+                    previewCanvas.height = img.height;
+                    previewCtx.drawImage(img, 0, 0);
+                    
+                    loadingOverlay.classList.add('hidden');
+                    cameraSection.classList.add('hidden');
+                    previewSection.classList.add('active');
+                };
+                img.src = capturedImageData;
+            }
+        });
+        
+        JFCustomWidget.subscribe("submit", function() {
+            console.log('JotForm submit event');
+            
+            // Send the captured image data
+            JFCustomWidget.sendSubmit({
+                valid: !!capturedImageData,
+                value: capturedImageData || ''
+            });
+        });
+        
+        // Request appropriate frame size
+        JFCustomWidget.requestFrameResize({
+            width: 400,
+            height: 600
+        });
+        
+        // Start checking for OpenCV
+        checkOpenCV();
+    </script>
+</body>
+</html>

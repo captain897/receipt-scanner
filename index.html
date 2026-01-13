@@ -239,17 +239,38 @@
         
         // JotForm
         function initJotFormWidget() {
-            if (typeof JFCustomWidget !== 'undefined' && window.inJotForm) {
+            if (typeof JFCustomWidget !== 'undefined') {
                 try {
-                    JFCustomWidget.subscribe("ready", function() { widgetReady = true; JFCustomWidget.requestFrameResize({ width: 400, height: 400 }); });
-                    JFCustomWidget.subscribe("submit", function() { JFCustomWidget.sendSubmit({ valid: true, value: capturedImageData || "" }); });
-                } catch (e) { initStandalone(); }
-            } else { initStandalone(); }
+                    JFCustomWidget.subscribe("ready", function(data) { 
+                        console.log("JotForm ready", data);
+                        widgetReady = true; 
+                        JFCustomWidget.requestFrameResize({ width: 400, height: 400 }); 
+                    });
+                    JFCustomWidget.subscribe("submit", function() { 
+                        console.log("JotForm submit, sending data:", capturedImageData ? "has image" : "no image");
+                        JFCustomWidget.sendSubmit({ 
+                            valid: true, 
+                            value: capturedImageData || "" 
+                        }); 
+                    });
+                    console.log("JotForm subscriptions registered");
+                } catch (e) { 
+                    console.log("JotForm init error", e);
+                    initStandalone(); 
+                }
+            } else { 
+                initStandalone(); 
+            }
         }
-        function initStandalone() { standaloneMode = true; widgetReady = true; }
+        function initStandalone() { standaloneMode = true; widgetReady = true; console.log("Standalone mode"); }
         function sendToJotForm(imageData) {
-            if (!standaloneMode && typeof JFCustomWidget !== 'undefined') {
-                try { JFCustomWidget.sendData({ value: imageData }); } catch (e) {}
+            if (typeof JFCustomWidget !== 'undefined') {
+                try { 
+                    JFCustomWidget.sendData({ value: imageData }); 
+                    console.log("Data sent to JotForm");
+                } catch (e) {
+                    console.log("sendData error", e);
+                }
             }
         }
         

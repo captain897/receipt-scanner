@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
+</head>
+<body>
+    <div style="padding: 20px; font-family: sans-serif;">
+        <div id="line1">1. Waiting for script...</div>
+        <div id="line2">2. Waiting...</div>
+        <div id="line3">3. Waiting...</div>
+        <div id="line4">4. Waiting...</div>
+    </div>
+    
+    <script type="text/javascript">
+        document.getElementById('line1').textContent = '1. Script loaded ✓';
+        
+        // Follow JotForm's exact pattern from documentation
+        JFCustomWidget.subscribe("ready", function(data){
+            document.getElementById('line2').textContent = '2. Ready event received ✓';
+            
+            // Subscribe to submit INSIDE ready callback (per documentation)
+            JFCustomWidget.subscribe("submit", function(){
+                document.getElementById('line3').textContent = '3. Submit event received ✓';
+                
+                var msg = {
+                    valid: true,
+                    value: "test_value_123"
+                };
+                
+                JFCustomWidget.sendSubmit(msg);
+                document.getElementById('line4').textContent = '4. sendSubmit called ✓';
+            });
+        });
+    </script>
+</body>
+</html>
